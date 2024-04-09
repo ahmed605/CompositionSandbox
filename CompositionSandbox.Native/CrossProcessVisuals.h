@@ -26,9 +26,11 @@ namespace AWUCD = ABI::Windows::UI::Composition::Desktop;
 #define CDSSHAREDHANDLE 0x123987
 
 HINSTANCE hInst;
-HANDLE handleWaitEvent;
 HANDLE receivedHandle;
 HANDLE parentProccess;
+
+bool isSecondary = false;
+volatile bool handleReceived = false;
 
 WUC::ContainerVisual rootVisual{ nullptr };
 
@@ -40,7 +42,7 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
-    const bool isSecondary = wcscmp(lpCmdLine, L"SecondaryProcess") == 0;
+    isSecondary = wcscmp(lpCmdLine, L"SecondaryProcess") == 0;
 
     const wchar_t* mainClassName = L"CompositionSandbox.Native.MainWindow";
     const wchar_t* secondaryClassName = L"CompositionSandbox.Native.SecondaryWindow";
@@ -53,9 +55,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     if (!InitInstance(hInstance, nCmdShow, className, windowTitle, &hwnd))
         return FALSE;
 
-    if (isSecondary)
-        handleWaitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-
     winrt::init_apartment(winrt::apartment_type::single_threaded);
     auto controller = CreateDispatcherQueueController();
 
@@ -67,6 +66,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
     if (!interop || !partner)
     {
+        // Note: See the TODO in dcomp.private.h
         MessageBox(hwnd, L"Make sure you are running on 19041+ and if so please open an issue", L"Unsupported Windows build", NULL);
         ExitProcess(0);
     }
@@ -103,7 +103,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         CDS.dwData = CDSSHAREDHANDLE;
         CDS.lpData = &secondaryHandle;
 
-        Sleep(500); // Enough time for the secondary process to spawn its window
+        // Wait for the secondary process to spawn its window
+        Sleep(500);
 
         HWND secondaryHwnd = FindWindowW(secondaryClassName, NULL);
         SendMessage(secondaryHwnd, WM_COPYDATA, (WPARAM)(HWND)hwnd, (LPARAM)(LPVOID)&CDS);
@@ -128,10 +129,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
             TranslateMessage(&msg);
             DispatchMessage(&msg);
 
-            if (handleWaitEvent && WaitForSingleObjectEx(handleWaitEvent, 0, true) != WAIT_TIMEOUT)
+            if (handleReceived)
             {
-                CloseHandle(handleWaitEvent);
-                handleWaitEvent = NULL;
+                handleReceived = false;
                 
                 partner->OpenSharedTargetFromHandle(receivedHandle, visualTarget.put());
 
@@ -159,6 +159,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
                 target.Root(rootVisual);
 
+                // Note: We are using a SpriteVisual with a CompositionVisualSurface brush instead of a RedirectVisual because
+                // RedirectVisual is a bit buggy and stops rendering source parts outside of its destination rendering target rect
+
                 WUC::SpriteVisual redirectVisual = compositor.CreateSpriteVisual();
                 WUC::CompositionVisualSurface visualSurface = compositor.CreateVisualSurface();
                 WUC::CompositionSurfaceBrush surfaceBrush = compositor.CreateSurfaceBrush(visualSurface);
@@ -167,9 +170,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
                 surfaceBrush.Stretch(WUC::CompositionStretch::None);
                 redirectVisual.Brush(surfaceBrush);
 
+                // Set size of roots
+                // 
+                // We cannot use RelativeSizeAdjustment for roots because this property depends on render target size
+                // when used on root-level, in this case it's the HWND client size since we are using an HWND render target,
+                // so if a window gets minimized RelativeSizeAdjustment would evaluate Size to zero,
+                // which would make the root visual size zero in the other window/process so nothing would render there,
+                // so we manually set root sizes to the maximized window size to prevent that and keep the rendering
+                // working fine on both windows/processes even if one of them is minimized
+
                 RECT wrct;
                 GetClientRect(hwnd, &wrct);
                 rootVisual.Size({ (float)(wrct.right - wrct.left), (float)(wrct.bottom - wrct.top) });
+
+                // Synchronize redirect visual & visual surface sizes with root visual size
 
                 WUC::ExpressionAnimation sizeAnim = compositor.CreateExpressionAnimation(L"rootVisual.Size");
                 sizeAnim.SetReferenceParameter(L"rootVisual", rootVisual);
@@ -261,10 +275,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_COPYDATA:
     {
         auto CDS = (PCOPYDATASTRUCT)lParam;
-        if (CDS->dwData == CDSSHAREDHANDLE)
+        if (isSecondary && CDS->dwData == CDSSHAREDHANDLE)
         {
             receivedHandle = *(HANDLE*)CDS->lpData;
-            SetEvent(handleWaitEvent);
+            handleReceived = true;
 
             DWORD pid;
             GetWindowThreadProcessId((HWND)wParam, &pid);
