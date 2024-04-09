@@ -1,4 +1,4 @@
-# CompositionSandbox
+# Composition Sandbox
 
 Collection of various Windows Composition API Experiments
 
