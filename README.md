@@ -2,6 +2,9 @@
 
 Collection of various Windows Composition API Experiments
 
+> [!CAUTION]
+> These experiments are just for fun, it's highly discouraged to use any of the experiments shown here in production code, they aren't well-tested and make use of internal/private APIs that can change at any time.
+
 ## Experiments
 
 ### [Cross Process Visuals](https://github.com/ahmed605/CompositionSandbox/blob/master/CompositionSandbox.Native/CrossProcessVisuals.h)
