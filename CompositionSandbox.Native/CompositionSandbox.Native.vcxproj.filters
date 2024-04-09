@@ -5,6 +5,12 @@
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
+    <Filter Include="Source Files\Experiments">
+      <UniqueIdentifier>{d4f58695-eb5a-4d52-928f-15bf36080fed}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Common">
+      <UniqueIdentifier>{b2ef5cc1-aace-4e96-a443-077706becae7}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -15,11 +21,11 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="dcomp.private.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="CrossProcessVisuals.h">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\Experiments</Filter>
+    </ClInclude>
+    <ClInclude Include="dcomp.private.h">
+      <Filter>Source Files\Common</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
